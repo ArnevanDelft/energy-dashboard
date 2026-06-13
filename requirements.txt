@@ -1,0 +1,6 @@
+fastapi>=0.110
+uvicorn[standard]>=0.27
+# The disaggregation engine. Pinned to the GitHub repo so Synology can build
+# without a local checkout. For local dev, install it editable instead:
+#   pip install -e ../ha-energy-analytics
+ha-energy-analytics @ git+https://github.com/ArnevanDelft/ha-energy-analytics.git

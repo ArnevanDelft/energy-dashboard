@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Energie Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #f6f6f4; --surface: #ffffff; --text: #1a1a18; --muted: #6b6b66;
+    --border: rgba(0,0,0,0.10); --accent: #3266ad; --good: #2e7d4f; --warn: #b5641f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1a1a18; --surface: #242421; --text: #ececea; --muted: #9a9a93;
+      --border: rgba(255,255,255,0.12); --accent: #6ea8e8; --good: #6cc08a; --warn: #d9954a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.5; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 24px 20px 60px; }
+  h1 { font-size: 22px; font-weight: 600; margin: 0; }
+  h2 { font-size: 17px; font-weight: 600; margin: 32px 0 12px; }
+  .sub { color: var(--muted); font-size: 13px; margin-top: 4px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px,1fr)); gap: 12px; margin-top: 18px; }
+  .card { background: var(--surface); border: 0.5px solid var(--border); border-radius: 12px; padding: 14px 16px; }
+  .card .label { font-size: 12px; color: var(--muted); }
+  .card .value { font-size: 26px; font-weight: 600; margin-top: 4px; }
+  .card .unit { font-size: 14px; color: var(--muted); font-weight: 400; }
+  .panel { background: var(--surface); border: 0.5px solid var(--border); border-radius: 12px; padding: 18px; }
+  .grid2 { display: grid; grid-template-columns: 300px 1fr; gap: 20px; align-items: center; }
+  @media (max-width: 720px) { .grid2 { grid-template-columns: 1fr; } }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 0.5px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 7px; vertical-align: -1px; }
+  .fpgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px,1fr)); gap: 14px; }
+  .fpcard { background: var(--surface); border: 0.5px solid var(--border); border-radius: 12px; padding: 14px 16px; }
+  .fpcard .name { font-weight: 600; font-size: 15px; text-transform: capitalize; }
+  .fpstats { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; font-size: 13px; margin-top: 8px; }
+  .fpstats span { color: var(--muted); }
+  .badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
+  .pill-import { color: var(--warn); } .pill-export { color: var(--good); }
+  .empty { color: var(--muted); font-size: 14px; padding: 8px 0; }
+  .err { background: color-mix(in srgb, #c0392b 12%, transparent); border: 0.5px solid #c0392b55; color: #c0392b; padding: 12px 14px; border-radius: 10px; font-size: 13px; white-space: pre-wrap; font-family: ui-monospace, monospace; }
+  .foot { color: var(--muted); font-size: 12px; margin-top: 28px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px;">
+    <div>
+      <h1>⚡ Energie Dashboard</h1>
+      <div class="sub" id="window">laden…</div>
+    </div>
+    <div class="sub" id="updated"></div>
+  </div>
+
+  <div id="error" style="display:none;" class="err"></div>
+
+  <!-- Live KPIs -->
+  <div class="cards" id="kpis">
+    <div class="card"><div class="label">Verbruik nu</div><div class="value"><span id="kpi-cons">–</span> <span class="unit">W</span></div></div>
+    <div class="card"><div class="label">Zon nu</div><div class="value"><span id="kpi-solar">–</span> <span class="unit">W</span></div></div>
+    <div class="card"><div class="label">Net</div><div class="value" id="kpi-grid">–</div></div>
+    <div class="card"><div class="label">Herkend in “overig”</div><div class="value"><span id="kpi-recog">–</span> <span class="unit">kWh</span></div></div>
+  </div>
+
+  <!-- Breakdown -->
+  <h2>Verbruik per apparaat <span class="sub" id="bk-window"></span></h2>
+  <div class="panel grid2">
+    <div><canvas id="donut" width="280" height="280"></canvas></div>
+    <div><table id="bk-table"><thead><tr><th>Apparaat</th><th class="num">kWh</th><th class="num">%</th></tr></thead><tbody></tbody></table></div>
+  </div>
+
+  <!-- Recognized -->
+  <h2>Herkend via fingerprints</h2>
+  <div class="panel">
+    <div class="sub" style="margin-bottom:10px;">Apparaten teruggevonden in het “overig”-restsignaal, zónder meetstekker. Een live plug-meting gaat altijd vóór op deze schatting.</div>
+    <table id="recog-table"><thead><tr><th>Apparaat</th><th class="num">cycli</th><th class="num">kWh</th><th class="num">zekerheid</th></tr></thead><tbody></tbody></table>
+    <div class="empty" id="recog-empty" style="display:none;">Nog niets herkend (bibliotheek leeg of geen match).</div>
+  </div>
+
+  <!-- Fingerprint library -->
+  <h2>Fingerprint-bibliotheek</h2>
+  <div class="fpgrid" id="fpgrid"></div>
+  <div class="empty" id="fp-empty" style="display:none;">Nog geen fingerprints opgeslagen. Draai <code>energy-analysis … --save-fingerprint</code>.</div>
+
+  <div class="foot" id="foot"></div>
+</div>
+
+<script>
+const PALETTE = ["#3266ad","#c0392b","#2e7d4f","#b5641f","#7d5ba6","#0d8a8a","#c0398f","#8a8a3a","#d9954a","#5a7d9a","#9a5a5a","#5a9a6a","#6a6a9a","#9a6a8a"];
+const fmt = (n, d=0) => (n==null ? "–" : Number(n).toLocaleString("nl-NL", {maximumFractionDigits:d, minimumFractionDigits:d}));
+
+let donut;
+
+async function loadState() {
+  const errBox = document.getElementById("error");
+  let res;
+  try { res = await fetch("/api/state"); } catch (e) { return; }
+  if (res.status === 503) {
+    const j = await res.json();
+    document.getElementById("window").textContent = "snapshot wordt berekend…";
+    if (j.error) { errBox.style.display="block"; errBox.textContent = j.error; }
+    return;
+  }
+  errBox.style.display = "none";
+  const s = await res.json();
+
+  const w = s.window;
+  document.getElementById("window").textContent =
+    `Periode: laatste ${w.days} dagen · ${s.totals.consumption_kwh} kWh verbruik · ${s.totals.solar_kwh} kWh zon`;
+  document.getElementById("bk-window").textContent = `(laatste ${w.days} dagen)`;
+  document.getElementById("updated").textContent = "bijgewerkt: " + new Date(s.generated_at).toLocaleString("nl-NL");
+  document.getElementById("kpi-recog").textContent = fmt(s.totals.recognized_in_other_kwh, 2);
+
+  renderBreakdown(s.breakdown);
+  renderRecognized(s.recognized);
+  renderFingerprints(s.fingerprints);
+  document.getElementById("foot").textContent =
+    `Totaal verbruik ${s.totals.consumption_kwh} kWh · waarvan overig ${s.totals.other_kwh} kWh.`;
+}
+
+function renderBreakdown(items) {
+  const tbody = document.querySelector("#bk-table tbody");
+  tbody.innerHTML = "";
+  items.forEach((it, i) => {
+    const c = PALETTE[i % PALETTE.length];
+    tbody.insertAdjacentHTML("beforeend",
+      `<tr><td><span class="swatch" style="background:${c}"></span>${it.name}</td>`+
+      `<td class="num">${fmt(it.kwh,2)}</td><td class="num">${it.pct==null?"–":fmt(it.pct,1)}</td></tr>`);
+  });
+  const data = {
+    labels: items.map(i=>i.name),
+    datasets: [{ data: items.map(i=>i.kwh), backgroundColor: items.map((_,i)=>PALETTE[i%PALETTE.length]), borderWidth: 0 }]
+  };
+  if (donut) { donut.data = data; donut.update(); }
+  else donut = new Chart(document.getElementById("donut"), {
+    type: "doughnut", data,
+    options: { plugins:{legend:{display:false}}, cutout:"62%", responsive:false }
+  });
+}
+
+function renderRecognized(items) {
+  const tbody = document.querySelector("#recog-table tbody");
+  tbody.innerHTML = "";
+  document.getElementById("recog-empty").style.display = items.length ? "none":"block";
+  items.forEach(it => {
+    tbody.insertAdjacentHTML("beforeend",
+      `<tr><td style="text-transform:capitalize">${it.device}</td>`+
+      `<td class="num">${it.matched_cycles}</td><td class="num">${fmt(it.kwh,2)}</td>`+
+      `<td class="num"><span class="badge">${fmt(it.mean_score*100,0)}%</span></td></tr>`);
+  });
+}
+
+function sparkline(shape) {
+  if (!shape || !shape.length) return "";
+  const w=240,h=44,max=Math.max(...shape,1);
+  const pts = shape.map((v,i)=>`${(i/(shape.length-1))*w},${h-(v/max)*(h-4)-2}`).join(" ");
+  return `<svg width="100%" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="margin-top:8px">`+
+    `<polyline points="${pts}" fill="none" stroke="var(--accent)" stroke-width="2"/></svg>`;
+}
+
+function renderFingerprints(items) {
+  const grid = document.getElementById("fpgrid");
+  grid.innerHTML = "";
+  document.getElementById("fp-empty").style.display = items.length ? "none":"block";
+  items.forEach(fp => {
+    const states = fp.per_state_w ? Object.entries(fp.per_state_w)
+      .map(([k,v])=>`${k}: ${fmt(v,0)}W`).join(" · ") : "";
+    grid.insertAdjacentHTML("beforeend",
+      `<div class="fpcard">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span class="name">${fp.device}</span>
+          ${fp.history_count?`<span class="badge">${fp.history_count}× herzien</span>`:""}
+        </div>
+        ${sparkline(fp.shape_w)}
+        <div class="fpstats">
+          <div><span>draait</span> ${fmt(fp.running_w,0)} W</div>
+          <div><span>standby</span> ${fmt(fp.standby_w,1)} W</div>
+          <div><span>inschakeling</span> ${fp.duty_cycle==null?"–":fmt(fp.duty_cycle*100,0)+"%"}</div>
+          <div><span>cycli/dag</span> ${fmt(fp.cycles_per_day,1)}</div>
+          <div><span>aan-duur</span> ${fp.on_duration_h==null?"–":fmt(fp.on_duration_h*60,0)+" min"}</div>
+          <div><span>kWh/dag</span> ${fmt(fp.kwh_per_day,2)}</div>
+        </div>
+        ${states?`<div class="sub" style="margin-top:8px">${states}</div>`:""}
+      </div>`);
+  });
+}
+
+async function loadLive() {
+  try {
+    const r = await fetch("/api/live"); if (!r.ok) return;
+    const l = await r.json();
+    document.getElementById("kpi-cons").textContent = fmt(l.consumption_w);
+    document.getElementById("kpi-solar").textContent = fmt(l.solar_w);
+    const g = document.getElementById("kpi-grid");
+    if (l.importing) g.innerHTML = `<span class="pill-import">↓ ${fmt(Math.abs(l.grid_w))} <span class="unit">W import</span></span>`;
+    else g.innerHTML = `<span class="pill-export">↑ ${fmt(Math.abs(l.grid_w))} <span class="unit">W terug</span></span>`;
+  } catch (e) {}
+}
+
+loadState(); loadLive();
+setInterval(loadLive, 5000);     // live numbers
+setInterval(loadState, 60000);   // pick up new snapshot
+</script>
+</body>
+</html>

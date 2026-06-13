@@ -1,0 +1,7 @@
+.env
+__pycache__/
+*.pyc
+.venv/
+venv/
+# fingerprints are mounted/synced at runtime, not committed here
+fingerprints/

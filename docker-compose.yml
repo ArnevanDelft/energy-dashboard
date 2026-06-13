@@ -1,0 +1,14 @@
+services:
+  dashboard:
+    build: .
+    image: energy-dashboard:latest
+    container_name: energy-dashboard
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "${DASHBOARD_PORT:-8088}:8000"
+    volumes:
+      # Shared fingerprint store. Point this at the folder your calibration
+      # runs write to (--save-fingerprint / ENERGY_FINGERPRINT_DIR). Read-only
+      # is enough; the dashboard never writes fingerprints.
+      - ${FINGERPRINT_HOST_DIR:-./fingerprints}:/data/fingerprints:ro
