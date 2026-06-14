@@ -9,8 +9,10 @@ cd "$(dirname "$0")"
 echo "==> git pull"
 git pull --ff-only
 
-echo "==> docker compose build (no cache for the package layer)"
-docker compose build --pull
+echo "==> docker compose build (refreshing the analytics package layer)"
+# CACHEBUST forces the (small) ha-energy-analytics install to re-run so a new
+# version of the package is always picked up; base deps stay cached.
+docker compose build --pull --build-arg CACHEBUST="$(date +%s)"
 
 echo "==> docker compose up -d"
 docker compose up -d

@@ -32,8 +32,12 @@ Open `http://<synology>:8088`. To update later:
 ./update.sh
 ```
 
-`update.sh` does `git pull`, rebuilds (re-pulling the latest analytics package
-from GitHub), and restarts the container.
+`update.sh` does `git pull`, rebuilds (forcing a refresh of the
+`ha-energy-analytics` package layer via a `CACHEBUST` build-arg), and restarts
+the container. **Always update via `./update.sh`** — a plain
+`docker compose build` would reuse the cached, possibly stale, package layer.
+If you ever rebuild by hand after a package change, use
+`docker compose build --no-cache`.
 
 ## Local development
 

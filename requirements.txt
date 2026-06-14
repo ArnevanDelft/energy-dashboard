@@ -1,6 +1,9 @@
+# Base dependencies (this layer stays cached across rebuilds). These are also
+# the runtime deps of ha-energy-analytics, listed here so the package itself
+# can be installed --no-deps in a separate, always-refreshed layer (see
+# Dockerfile) -- otherwise Docker caches a stale copy of the git package.
 fastapi>=0.110
 uvicorn[standard]>=0.27
-# The disaggregation engine. Pinned to the GitHub repo so Synology can build
-# without a local checkout. For local dev, install it editable instead:
-#   pip install -e ../ha-energy-analytics
-ha-energy-analytics @ git+https://github.com/ArnevanDelft/ha-energy-analytics.git
+pandas>=2.0
+numpy>=1.24
+requests>=2.28.0
