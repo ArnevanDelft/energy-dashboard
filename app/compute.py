@@ -17,6 +17,10 @@ from energy_analytics.loader import InfluxLoader
 
 # How many days the breakdown/recognition window covers.
 WINDOW_DAYS = float(os.environ.get("DASHBOARD_DAYS", "7"))
+# Resample grid for the dashboard. Coarser than the package default (30s)
+# to cut InfluxDB load and pandas work -- 60s halves it with no visible effect
+# on daily kWh. Bump to 300s on a very slow NAS.
+FREQ = os.environ.get("DASHBOARD_FREQ", "60s")
 # Pseudo-rows breakdown_kwh appends that are not real devices.
 _PSEUDO_ROWS = {"— TOTAL consumption —", "(solar produced)"}
 
@@ -31,10 +35,10 @@ def compute_snapshot() -> dict:
     end = pd.Timestamp.now(tz="UTC")
     start = end - pd.Timedelta(days=WINDOW_DAYS)
 
-    frame = decompose.build_power_frame(loader_obj, start, end)
-    frame = disaggregate.disaggregate(frame)
+    frame = decompose.build_power_frame(loader_obj, start, end, FREQ)
+    frame = disaggregate.disaggregate(frame, FREQ)
 
-    bk = report.breakdown_kwh(frame)
+    bk = report.breakdown_kwh(frame, FREQ)
     total_cons = float(bk.loc["— TOTAL consumption —", "kWh"])
     solar = float(bk.loc["(solar produced)", "kWh"])
     breakdown = [
@@ -44,7 +48,7 @@ def compute_snapshot() -> dict:
         if name not in _PSEUDO_ROWS and float(row["kWh"]) > 0.0005
     ]
 
-    matches = matcher.match(frame["other"])
+    matches = matcher.match(frame["other"], FREQ)
     recognized = [
         {"device": dev, "matched_cycles": int(r["matched_cycles"]),
          "kwh": float(r["kwh"]), "mean_score": float(r["mean_score"])}

@@ -61,6 +61,20 @@ writable data store.
 > The write endpoints (plug assignments) are **unauthenticated** — fine on a
 > trusted LAN; don't expose the dashboard to the internet without a proxy/auth.
 
+## Performance on a slow NAS
+
+The dashboard process itself is tiny; the load is the InfluxDB queries it runs
+(recompute on a timer + live polling). If the NAS struggles or you see
+`Read timed out` in the logs:
+
+- raise `DASHBOARD_REFRESH_MINUTES` (e.g. 30–60),
+- lower `DASHBOARD_DAYS` (e.g. 3) and/or coarsen `DASHBOARD_FREQ` (e.g. `300s`),
+- the live tiles already poll only while the browser tab is visible.
+
+Queries target the exact InfluxDB measurement per entity (no `/.*/` full-database
+scans), and lights are fetched in one query each — keep the package up to date
+(`./update.sh`) to benefit.
+
 ## Endpoints
 
 | Path | Purpose |

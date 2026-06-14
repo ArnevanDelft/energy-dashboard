@@ -306,8 +306,10 @@ document.getElementById("assign-table").addEventListener("click", async e => {
 document.getElementById("f-start").value = todayISO();
 
 loadState(); loadLive(); loadPlugs(); loadAssignments();
-setInterval(loadLive, 5000);     // live numbers
-setInterval(loadState, 60000);   // pick up new snapshot
+// Poll only while the tab is visible, to spare InfluxDB on the NAS.
+setInterval(() => { if (!document.hidden) loadLive(); }, 20000);   // live numbers
+setInterval(() => { if (!document.hidden) loadState(); }, 120000); // new snapshot
+document.addEventListener("visibilitychange", () => { if (!document.hidden) { loadLive(); loadState(); } });
 </script>
 </body>
 </html>
