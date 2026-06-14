@@ -47,6 +47,17 @@
   .empty { color: var(--muted); font-size: 14px; padding: 8px 0; }
   .err { background: color-mix(in srgb, #c0392b 12%, transparent); border: 0.5px solid #c0392b55; color: #c0392b; padding: 12px 14px; border-radius: 10px; font-size: 13px; white-space: pre-wrap; font-family: ui-monospace, monospace; }
   .foot { color: var(--muted); font-size: 12px; margin-top: 28px; }
+  label { font-size: 12px; color: var(--muted); }
+  input, select { width: 100%; padding: 7px 9px; margin-top: 3px; font-size: 14px;
+    background: var(--bg); color: var(--text); border: 0.5px solid var(--border);
+    border-radius: 8px; }
+  input[type=checkbox] { width: auto; margin-top: 0; vertical-align: -1px; }
+  button { padding: 8px 16px; font-size: 14px; font-weight: 500; cursor: pointer;
+    background: var(--accent); color: #fff; border: none; border-radius: 8px; }
+  button:hover { opacity: 0.9; }
+  button.link { background: none; color: var(--accent); padding: 2px 6px; font-weight: 400; }
+  button.danger { background: none; color: #c0392b; padding: 2px 6px; font-weight: 400; }
+  @media (max-width: 720px) { #assign-form { grid-template-columns: 1fr 1fr !important; } }
 </style>
 </head>
 <body>
@@ -82,6 +93,23 @@
     <div class="sub" style="margin-bottom:10px;">Apparaten teruggevonden in het “overig”-restsignaal, zónder meetstekker. Een live plug-meting gaat altijd vóór op deze schatting.</div>
     <table id="recog-table"><thead><tr><th>Apparaat</th><th class="num">cycli</th><th class="num">kWh</th><th class="num">zekerheid</th></tr></thead><tbody></tbody></table>
     <div class="empty" id="recog-empty" style="display:none;">Nog niets herkend (bibliotheek leeg of geen match).</div>
+  </div>
+
+  <!-- Devices & plug assignments -->
+  <h2>Apparaten &amp; plug-koppelingen</h2>
+  <div class="panel">
+    <div class="sub" style="margin-bottom:12px;">Koppel de meetstekker aan een apparaat voor de periode dat hij eraan zat. Tijdens die periode wordt het verbruik aan dat apparaat toegekend (en de schatting ervoor uitgezet).</div>
+    <form id="assign-form" style="display:grid; grid-template-columns: 1fr 1fr 130px 130px auto; gap:10px; align-items:end; margin-bottom:16px;">
+      <label>Apparaat<br><input id="f-device" type="text" placeholder="bijv. fridge, dishwasher" required></label>
+      <label>Plug<br><select id="f-plug" required></select></label>
+      <label>Van<br><input id="f-start" type="date" required></label>
+      <label>Tot<br><input id="f-end" type="date"></label>
+      <button type="submit">Koppelen</button>
+    </form>
+    <label class="sub" style="margin:-8px 0 12px; display:block;"><input type="checkbox" id="f-open" checked> nog aangesloten (geen einddatum)</label>
+    <table id="assign-table"><thead><tr><th>Apparaat</th><th>Plug</th><th>Van</th><th>Tot</th><th></th></tr></thead><tbody></tbody></table>
+    <div class="empty" id="assign-empty" style="display:none;">Nog geen koppelingen.</div>
+    <div id="assign-msg" class="sub" style="margin-top:8px;"></div>
   </div>
 
   <!-- Fingerprint library -->
@@ -204,7 +232,80 @@ async function loadLive() {
   } catch (e) {}
 }
 
-loadState(); loadLive();
+// --- Devices & plug assignments ---
+const todayISO = () => new Date().toISOString().slice(0,10);
+
+async function loadPlugs() {
+  const sel = document.getElementById("f-plug");
+  try {
+    const r = await fetch("/api/plugs"); const j = await r.json();
+    const plugs = j.plugs || [];
+    sel.innerHTML = plugs.map(p => `<option value="${p}"${p.includes("energiemonitoring")?" selected":""}>${p}</option>`).join("");
+  } catch (e) { sel.innerHTML = `<option value="">(plugs niet geladen)</option>`; }
+}
+
+async function loadAssignments() {
+  let j;
+  try { j = await (await fetch("/api/assignments")).json(); } catch (e) { return; }
+  const items = j.assignments || [];
+  const tbody = document.querySelector("#assign-table tbody");
+  tbody.innerHTML = "";
+  document.getElementById("assign-empty").style.display = items.length ? "none" : "block";
+  items.forEach(a => {
+    const end = a.end ? a.end : `<span style="color:var(--good)">actief</span>`;
+    const closeBtn = a.end ? "" : `<button class="link" data-close="${a.id}">afronden</button>`;
+    tbody.insertAdjacentHTML("beforeend",
+      `<tr><td style="text-transform:capitalize">${a.device}</td>`+
+      `<td class="sub">${a.plug}</td><td>${a.start}</td><td>${end}</td>`+
+      `<td style="text-align:right">${closeBtn} <button class="danger" data-del="${a.id}">verwijderen</button></td></tr>`);
+  });
+}
+
+function msg(t, ok=true) {
+  const m = document.getElementById("assign-msg");
+  m.textContent = t; m.style.color = ok ? "var(--good)" : "#c0392b";
+  setTimeout(() => { m.textContent = ""; }, 4000);
+}
+
+document.getElementById("f-open").addEventListener("change", e => {
+  document.getElementById("f-end").disabled = e.target.checked;
+});
+document.getElementById("f-end").disabled = true;
+
+document.getElementById("assign-form").addEventListener("submit", async e => {
+  e.preventDefault();
+  const open = document.getElementById("f-open").checked;
+  const body = {
+    device: document.getElementById("f-device").value.trim(),
+    plug: document.getElementById("f-plug").value,
+    start: document.getElementById("f-start").value,
+    end: open ? null : (document.getElementById("f-end").value || null),
+  };
+  const r = await fetch("/api/assignments", {method:"POST",
+    headers:{"Content-Type":"application/json"}, body: JSON.stringify(body)});
+  if (r.ok) { msg("Koppeling toegevoegd — opnieuw berekend."); e.target.reset();
+    document.getElementById("f-end").disabled = true; document.getElementById("f-open").checked = true;
+    await loadAssignments(); await loadState(); }
+  else { const j = await r.json().catch(()=>({})); msg("Fout: "+(j.detail||r.status), false); }
+});
+
+document.getElementById("assign-table").addEventListener("click", async e => {
+  const close = e.target.getAttribute("data-close");
+  const del = e.target.getAttribute("data-del");
+  if (close) {
+    await fetch(`/api/assignments/${close}`, {method:"PATCH",
+      headers:{"Content-Type":"application/json"}, body: JSON.stringify({end: todayISO()})});
+    msg("Afgerond op vandaag."); await loadAssignments(); await loadState();
+  } else if (del) {
+    if (!confirm("Deze koppeling verwijderen?")) return;
+    await fetch(`/api/assignments/${del}`, {method:"DELETE"});
+    msg("Verwijderd."); await loadAssignments(); await loadState();
+  }
+});
+
+document.getElementById("f-start").value = todayISO();
+
+loadState(); loadLive(); loadPlugs(); loadAssignments();
 setInterval(loadLive, 5000);     // live numbers
 setInterval(loadState, 60000);   // pick up new snapshot
 </script>

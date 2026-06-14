@@ -8,7 +8,8 @@ services:
     ports:
       - "${DASHBOARD_PORT:-8088}:8000"
     volumes:
-      # Shared fingerprint store. Point this at the folder your calibration
-      # runs write to (--save-fingerprint / ENERGY_FINGERPRINT_DIR). Read-only
-      # is enough; the dashboard never writes fingerprints.
-      - ${FINGERPRINT_HOST_DIR:-./fingerprints}:/data/fingerprints:ro
+      # Shared, writable data volume holding both the fingerprint library
+      # (/data/fingerprints) and the editable plug-assignments store
+      # (/data/assignments.json). Writable because the dashboard edits
+      # assignments; calibrate.sh writes fingerprints into the same volume.
+      - ${DATA_HOST_DIR:-./data}:/data

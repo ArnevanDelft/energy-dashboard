@@ -20,16 +20,17 @@ set -a
 set +a
 
 DAYS="${1:-7}"
-FP_DIR="${FINGERPRINT_HOST_DIR:-./fingerprints}"
-mkdir -p "$FP_DIR"
+DATA_DIR="${DATA_HOST_DIR:-./data}"
+mkdir -p "$DATA_DIR/fingerprints"
 
-echo "==> calibrating over the last ${DAYS} days, writing to ${FP_DIR}"
+echo "==> calibrating over the last ${DAYS} days, writing to ${DATA_DIR}/fingerprints"
 docker run --rm \
   --env-file .env \
   -e ENERGY_FINGERPRINT_DIR=/data/fingerprints \
-  -v "$(cd "$FP_DIR" && pwd):/data/fingerprints" \
+  -e ENERGY_ASSIGNMENTS_FILE=/data/assignments.json \
+  -v "$(cd "$DATA_DIR" && pwd):/data" \
   energy-dashboard:latest \
   energy-analysis --source influx --days "$DAYS" --calibrate --save-fingerprint
 
 echo "==> done. Current fingerprints:"
-ls -1 "$FP_DIR"
+ls -1 "$DATA_DIR/fingerprints"

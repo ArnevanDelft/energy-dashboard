@@ -3,7 +3,9 @@ __pycache__/
 *.pyc
 .venv/
 venv/
-# fingerprint JSONs are synced in at runtime, not committed -- but keep the
-# directory itself so the docker bind mount has something to mount.
-fingerprints/*
-!fingerprints/.gitkeep
+# Runtime data volume (fingerprint JSONs + assignments.json) -- not committed,
+# but keep the directory so the docker bind mount has something to mount.
+data/*
+!data/fingerprints
+data/fingerprints/*
+!data/fingerprints/.gitkeep

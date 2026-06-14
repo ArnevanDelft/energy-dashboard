@@ -89,6 +89,18 @@ def _fingerprint_cards() -> list[dict]:
     return cards
 
 
+def discover_plugs() -> list[str]:
+    """All power (W) sensors in InfluxDB, as candidate plug entities."""
+    loader_obj = _loader()
+    q = 'SHOW TAG VALUES FROM "W" WITH KEY = "entity_id"'
+    resp = loader_obj.session.get(
+        loader_obj.url, params={**loader_obj.params, "q": q}, timeout=30)
+    resp.raise_for_status()
+    series = resp.json().get("results", [{}])[0].get("series", [])
+    oids = {row[1] for s in series for row in s.get("values", [])}
+    return sorted(f"sensor.{o}" for o in oids)
+
+
 def live_power() -> dict:
     """Cheap latest-value read: house consumption, solar, grid net."""
     loader_obj = _loader()
