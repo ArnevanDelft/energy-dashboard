@@ -57,13 +57,28 @@ cadence, and `ENERGY_FINGERPRINT_DIR` for the shared fingerprint store.
 
 ## Fingerprints
 
-The dashboard only **reads** fingerprints. Generate them from the calibration
-host with the package CLI:
+The dashboard only **reads** fingerprints (its volume is mounted read-only).
+The easiest way to generate them on the Synology is `calibrate.sh`, which runs
+a throwaway container from the dashboard image with the fingerprint folder
+mounted **writable**:
+
+```sh
+./calibrate.sh           # calibrate over the last 7 days
+./calibrate.sh 14        # ... or 14
+```
+
+It writes (e.g.) `fingerprints/fridge.json` straight into the folder the
+dashboard reads, so the device shows up after the next snapshot refresh. No
+extra Python install is needed — it reuses the image and your `.env`.
+
+Schedule it weekly in **Synology Task Scheduler** (user-defined script):
+
+```sh
+sh /volume1/path/to/energy-dashboard/calibrate.sh
+```
+
+You can also run the CLI directly anywhere the package is installed:
 
 ```sh
 energy-analysis --source influx --days 7 --save-fingerprint
 ```
-
-and make that directory available to the container (the `FINGERPRINT_HOST_DIR`
-volume). If you run calibration on the Synology too, point both at the same
-shared folder.
