@@ -5,7 +5,8 @@ Docker container on the Synology, reads Home Assistant data straight from
 InfluxDB, recomputes the breakdown on a timer, and shows:
 
 - **Live power** — house consumption, solar, grid import/export (updates every 5 s)
-- **Device energy breakdown** — kWh per device over the last N days (donut + table)
+- **Device energy breakdown** — kWh per device over a selectable period
+  (1 hour … 1 year; donut + table)
 - **Recognized via fingerprints** — devices found in the “other” remainder without a plug
 - **Fingerprint library** — running watts, duty cycle, cycles/day and the cycle-shape curve per device
 - **Devices & plug assignments** — create a device and couple the metering plug
@@ -61,19 +62,30 @@ writable data store.
 > The write endpoints (plug assignments) are **unauthenticated** — fine on a
 > trusted LAN; don't expose the dashboard to the internet without a proxy/auth.
 
+## Periods & resolution
+
+The breakdown period is selectable in the UI: `1u 6u 24u 7d 30d 90d 1j`. The
+resample grid scales with the period (30s for an hour up to 3h for a year) and
+InfluxDB **downsamples server-side**, so even a year returns in ~1 s instead of
+pulling millions of raw points. Energy totals (kWh) stay accurate at every
+resolution; on long periods (≥30 days) the grid is coarse, so short-lived
+spikes (induction) and fingerprint matching are less sharp — the UI flags this.
+
+Each period is cached and recomputed every `DASHBOARD_REFRESH_MINUTES`; the
+default (`DASHBOARD_PERIOD`) is kept permanently warm, others compute on first
+request.
+
 ## Performance on a slow NAS
 
-The dashboard process itself is tiny; the load is the InfluxDB queries it runs
-(recompute on a timer + live polling). If the NAS struggles or you see
-`Read timed out` in the logs:
+The dashboard process itself is tiny; the load is the InfluxDB queries it runs.
+If the NAS struggles or you see `Read timed out` in the logs:
 
 - raise `DASHBOARD_REFRESH_MINUTES` (e.g. 30–60),
-- lower `DASHBOARD_DAYS` (e.g. 3) and/or coarsen `DASHBOARD_FREQ` (e.g. `300s`),
+- default to a shorter `DASHBOARD_PERIOD`,
 - the live tiles already poll only while the browser tab is visible.
 
 Queries target the exact InfluxDB measurement per entity (no `/.*/` full-database
-scans), and lights are fetched in one query each — keep the package up to date
-(`./update.sh`) to benefit.
+scans) and downsample server-side — keep the package up to date (`./update.sh`).
 
 ## Endpoints
 

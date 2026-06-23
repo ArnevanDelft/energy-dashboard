@@ -15,30 +15,47 @@ import pandas as pd
 from energy_analytics import config, decompose, disaggregate, fingerprint, matcher, report
 from energy_analytics.loader import InfluxLoader
 
-# How many days the breakdown/recognition window covers.
-WINDOW_DAYS = float(os.environ.get("DASHBOARD_DAYS", "7"))
-# Resample grid for the dashboard. Coarser than the package default (30s)
-# to cut InfluxDB load and pandas work -- 60s halves it with no visible effect
-# on daily kWh. Bump to 300s on a very slow NAS.
-FREQ = os.environ.get("DASHBOARD_FREQ", "60s")
+# Selectable periods: key -> (label, days, grid). The grid stays fine for
+# short windows (full spike/cycle detection) and coarsens for long ones so
+# InfluxDB downsamples to a few thousand points instead of millions. Energy
+# totals stay accurate; only fine-grained detection degrades on long windows.
+PERIODS: dict[str, tuple[str, float, str]] = {
+    "1u":  ("laatste uur",     1 / 24, "30s"),
+    "6u":  ("laatste 6 uur",   0.25,   "30s"),
+    "24u": ("laatste 24 uur",  1,      "60s"),
+    "7d":  ("laatste 7 dagen", 7,      "60s"),
+    "30d": ("laatste 30 dagen", 30,    "300s"),
+    "90d": ("laatste 90 dagen", 90,    "1h"),
+    "1j":  ("laatste jaar",    365,    "3h"),
+}
+# Human-readable grid for the UI.
+_GRID_LABEL = {"30s": "30 sec", "60s": "1 min", "120s": "2 min",
+               "300s": "5 min", "900s": "15 min", "1h": "1 uur", "3h": "3 uur"}
+DEFAULT_PERIOD = os.environ.get("DASHBOARD_PERIOD", "7d")
 # Pseudo-rows breakdown_kwh appends that are not real devices.
 _PSEUDO_ROWS = {"— TOTAL consumption —", "(solar produced)"}
+
+
+def resolve_period(key: str | None) -> str:
+    return key if key in PERIODS else DEFAULT_PERIOD
 
 
 def _loader() -> InfluxLoader:
     return InfluxLoader.from_env()
 
 
-def compute_snapshot() -> dict:
-    """Full recompute: breakdown, recognised devices, fingerprint library."""
+def compute_snapshot(period_key: str | None = None) -> dict:
+    """Full recompute for a period: breakdown, recognised devices, library."""
+    key = resolve_period(period_key)
+    label, days, freq = PERIODS[key]
     loader_obj = _loader()
     end = pd.Timestamp.now(tz="UTC")
-    start = end - pd.Timedelta(days=WINDOW_DAYS)
+    start = end - pd.Timedelta(days=days)
 
-    frame = decompose.build_power_frame(loader_obj, start, end, FREQ)
-    frame = disaggregate.disaggregate(frame, FREQ)
+    frame = decompose.build_power_frame(loader_obj, start, end, freq)
+    frame = disaggregate.disaggregate(frame, freq)
 
-    bk = report.breakdown_kwh(frame, FREQ)
+    bk = report.breakdown_kwh(frame, freq)
     total_cons = float(bk.loc["— TOTAL consumption —", "kWh"])
     solar = float(bk.loc["(solar produced)", "kWh"])
     breakdown = [
@@ -48,7 +65,7 @@ def compute_snapshot() -> dict:
         if name not in _PSEUDO_ROWS and float(row["kWh"]) > 0.0005
     ]
 
-    matches = matcher.match(frame["other"], FREQ)
+    matches = matcher.match(frame["other"], freq)
     recognized = [
         {"device": dev, "matched_cycles": int(r["matched_cycles"]),
          "kwh": float(r["kwh"]), "mean_score": float(r["mean_score"])}
@@ -60,7 +77,10 @@ def compute_snapshot() -> dict:
 
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "window": {"start": start.isoformat(), "end": end.isoformat(), "days": WINDOW_DAYS},
+        "period": {"key": key, "label": label, "days": days,
+                   "resolution": _GRID_LABEL.get(freq, freq),
+                   "coarse": days >= 30},
+        "window": {"start": start.isoformat(), "end": end.isoformat(), "days": days},
         "totals": {"consumption_kwh": round(total_cons, 2),
                    "solar_kwh": round(solar, 2),
                    "other_kwh": round(other_kwh, 2),

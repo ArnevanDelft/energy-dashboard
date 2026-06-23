@@ -60,6 +60,12 @@
   button.link { background: none; color: var(--accent); padding: 2px 6px; font-weight: 400; }
   button.danger { background: none; color: #c0392b; padding: 2px 6px; font-weight: 400; }
   @media (max-width: 720px) { #assign-form { grid-template-columns: 1fr 1fr !important; } }
+  .periodbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+  .segmented { display: inline-flex; border: 0.5px solid var(--border); border-radius: 9px; overflow: hidden; }
+  .segmented button { background: var(--surface); color: var(--muted); border: none; border-radius: 0;
+    padding: 6px 12px; font-size: 13px; border-right: 0.5px solid var(--border); }
+  .segmented button:last-child { border-right: none; }
+  .segmented button.active { background: var(--accent); color: #fff; font-weight: 500; }
 </style>
 </head>
 <body>
@@ -83,7 +89,11 @@
   </div>
 
   <!-- Breakdown -->
-  <h2>Verbruik per apparaat <span class="sub" id="bk-window"></span></h2>
+  <h2>Verbruik per apparaat</h2>
+  <div class="periodbar">
+    <div id="periods" class="segmented"></div>
+    <span class="sub" id="period-info"></span>
+  </div>
   <div class="panel grid2">
     <div><canvas id="donut" width="280" height="280"></canvas></div>
     <div><table id="bk-table"><thead><tr><th>Apparaat</th><th class="num">kWh</th><th class="num">%</th></tr></thead><tbody></tbody></table></div>
@@ -129,23 +139,44 @@ const fmt = (n, d=0) => (n==null ? "–" : Number(n).toLocaleString("nl-NL", {ma
 
 let donut;
 
+// --- Period selector ---
+const PERIOD_LABELS = {"1u":"1 uur","6u":"6 uur","24u":"24 uur","7d":"7 dagen","30d":"30 dagen","90d":"90 dagen","1j":"jaar"};
+let period = localStorage.getItem("period") || "7d";
+
+function renderPeriods() {
+  const el = document.getElementById("periods");
+  el.innerHTML = Object.entries(PERIOD_LABELS).map(([k,lab]) =>
+    `<button data-p="${k}" class="${k===period?"active":""}">${lab}</button>`).join("");
+}
+document.getElementById("periods").addEventListener("click", e => {
+  const k = e.target.getAttribute("data-p");
+  if (!k || k===period) return;
+  period = k; localStorage.setItem("period", k);
+  renderPeriods();
+  document.getElementById("window").textContent = "periode wordt berekend…";
+  loadState();
+});
+
 async function loadState() {
   const errBox = document.getElementById("error");
   let res;
-  try { res = await fetch("/api/state"); } catch (e) { return; }
+  try { res = await fetch("/api/state?period=" + encodeURIComponent(period)); } catch (e) { return; }
   if (res.status === 503) {
     const j = await res.json();
-    document.getElementById("window").textContent = "snapshot wordt berekend…";
+    document.getElementById("window").textContent = "periode wordt berekend… (langere periodes duren even)";
     if (j.error) { errBox.style.display="block"; errBox.textContent = j.error; }
     return;
   }
   errBox.style.display = "none";
   const s = await res.json();
 
-  const w = s.window;
+  const p = s.period || {label:`laatste ${s.window.days} dagen`, resolution:"", coarse:false};
   document.getElementById("window").textContent =
-    `Periode: laatste ${w.days} dagen · ${s.totals.consumption_kwh} kWh verbruik · ${s.totals.solar_kwh} kWh zon`;
-  document.getElementById("bk-window").textContent = `(laatste ${w.days} dagen)`;
+    `${p.label}: ${s.totals.consumption_kwh} kWh verbruik · ${s.totals.solar_kwh} kWh zon`;
+  document.getElementById("period-info").innerHTML =
+    `raster ${p.resolution}` + (p.coarse
+      ? ` · <span class="tip" title="Bij lange periodes wordt het verbruik per groter tijdsblok gemiddeld. De kWh-totalen blijven kloppen, maar korte pieken (inductie) en fingerprint-herkenning zijn minder scherp.">grof — totalen kloppen, minder detail</span>`
+      : "");
   document.getElementById("updated").textContent = "bijgewerkt: " + new Date(s.generated_at).toLocaleString("nl-NL");
   document.getElementById("kpi-recog").textContent = fmt(s.totals.recognized_in_other_kwh, 2);
 
@@ -321,6 +352,7 @@ document.getElementById("assign-table").addEventListener("click", async e => {
 
 document.getElementById("f-start").value = todayISO();
 
+renderPeriods();
 loadState(); loadLive(); loadPlugs(); loadAssignments();
 // Poll only while the tab is visible, to spare InfluxDB on the NAS.
 setInterval(() => { if (!document.hidden) loadLive(); }, 20000);   // live numbers
