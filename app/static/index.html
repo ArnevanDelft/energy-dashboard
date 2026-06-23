@@ -42,6 +42,8 @@
   .fpcard .name { font-weight: 600; font-size: 15px; text-transform: capitalize; }
   .fpstats { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; font-size: 13px; margin-top: 8px; }
   .fpstats span { color: var(--muted); }
+  .tip { text-decoration: underline dotted; text-underline-offset: 2px; cursor: help; }
+  .shape-wrap { cursor: help; }
   .badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
   .pill-import { color: var(--warn); } .pill-export { color: var(--good); }
   .empty { color: var(--muted); font-size: 14px; padding: 8px 0; }
@@ -114,6 +116,7 @@
 
   <!-- Fingerprint library -->
   <h2>Fingerprint-bibliotheek</h2>
+  <div class="sub" style="margin:-6px 0 12px;">Een “fingerprint” is het gemeten gedrag van een apparaat: hoeveel het trekt, hoe vaak het aan/uit gaat en hoe een aan-beurt verloopt. Beweeg over een term voor uitleg.</div>
   <div class="fpgrid" id="fpgrid"></div>
   <div class="empty" id="fp-empty" style="display:none;">Nog geen fingerprints opgeslagen. Draai <code>energy-analysis … --save-fingerprint</code>.</div>
 
@@ -185,12 +188,25 @@ function renderRecognized(items) {
   });
 }
 
+const TIPS = {
+  shape: "Vormcurve van een typische aan-beurt: hoe het vermogen verloopt van inschakelen tot uitschakelen. Hieraan herkent het systeem dit apparaat later terug in het totaalverbruik, zelfs zonder meetstekker.",
+  draait: "Gemiddeld vermogen (watt) terwijl het apparaat áán is — dus terwijl de motor of compressor echt draait.",
+  standby: "Vermogen (watt) als het apparaat 'uit' of in ruststand staat. Veel apparaten trekken dan nog een beetje (elektronica, klokje).",
+  inschakeling: "Het percentage van de tijd dat het apparaat daadwerkelijk aan stond. Een koelkast met 41% draaide 41% van de tijd en stond 59% stil.",
+  cycli: "Hoe vaak per dag het apparaat aan- en uitschakelde. Een koelkastcompressor doet dat bijvoorbeeld tientallen keren per dag.",
+  duur: "Hoe lang één aan-beurt gemiddeld duurt (mediaan).",
+  kwh: "Gemiddeld energieverbruik per dag, in kilowattuur (kWh).",
+  herzien: "Aantal keren dat deze fingerprint opnieuw gemeten en bijgewerkt is. Oudere versies blijven in de geschiedenis bewaard.",
+  states: "Gemeten vermogen per status van het apparaat (bijv. spelend / pauze / uit).",
+};
+const t = k => TIPS[k].replace(/"/g, "&quot;");
+
 function sparkline(shape) {
   if (!shape || !shape.length) return "";
   const w=240,h=44,max=Math.max(...shape,1);
   const pts = shape.map((v,i)=>`${(i/(shape.length-1))*w},${h-(v/max)*(h-4)-2}`).join(" ");
-  return `<svg width="100%" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="margin-top:8px">`+
-    `<polyline points="${pts}" fill="none" stroke="var(--accent)" stroke-width="2"/></svg>`;
+  return `<div class="shape-wrap" title="${t('shape')}"><svg width="100%" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="margin-top:8px">`+
+    `<polyline points="${pts}" fill="none" stroke="var(--accent)" stroke-width="2"/></svg></div>`;
 }
 
 function renderFingerprints(items) {
@@ -204,18 +220,18 @@ function renderFingerprints(items) {
       `<div class="fpcard">
         <div style="display:flex;justify-content:space-between;align-items:center">
           <span class="name">${fp.device}</span>
-          ${fp.history_count?`<span class="badge">${fp.history_count}× herzien</span>`:""}
+          ${fp.history_count?`<span class="badge tip" title="${t('herzien')}">${fp.history_count}× herzien</span>`:""}
         </div>
         ${sparkline(fp.shape_w)}
         <div class="fpstats">
-          <div><span>draait</span> ${fmt(fp.running_w,0)} W</div>
-          <div><span>standby</span> ${fmt(fp.standby_w,1)} W</div>
-          <div><span>inschakeling</span> ${fp.duty_cycle==null?"–":fmt(fp.duty_cycle*100,0)+"%"}</div>
-          <div><span>cycli/dag</span> ${fmt(fp.cycles_per_day,1)}</div>
-          <div><span>aan-duur</span> ${fp.on_duration_h==null?"–":fmt(fp.on_duration_h*60,0)+" min"}</div>
-          <div><span>kWh/dag</span> ${fmt(fp.kwh_per_day,2)}</div>
+          <div><span class="tip" title="${t('draait')}">draait</span> ${fmt(fp.running_w,0)} W</div>
+          <div><span class="tip" title="${t('standby')}">standby</span> ${fmt(fp.standby_w,1)} W</div>
+          <div><span class="tip" title="${t('inschakeling')}">inschakeling</span> ${fp.duty_cycle==null?"–":fmt(fp.duty_cycle*100,0)+"%"}</div>
+          <div><span class="tip" title="${t('cycli')}">cycli/dag</span> ${fmt(fp.cycles_per_day,1)}</div>
+          <div><span class="tip" title="${t('duur')}">aan-duur</span> ${fp.on_duration_h==null?"–":fmt(fp.on_duration_h*60,0)+" min"}</div>
+          <div><span class="tip" title="${t('kwh')}">kWh/dag</span> ${fmt(fp.kwh_per_day,2)}</div>
         </div>
-        ${states?`<div class="sub" style="margin-top:8px">${states}</div>`:""}
+        ${states?`<div class="sub tip" style="margin-top:8px" title="${t('states')}">${states}</div>`:""}
       </div>`);
   });
 }
